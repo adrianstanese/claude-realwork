@@ -24,6 +24,6 @@ export type Work = {
 
 declare module 'claude-code' {
   interface PluginState {
-    realwork: { id: string; work: Shaped<Work | null> }
+    realwork: { id: string; work: Shaped<Work | null>; isAutoOpened: boolean }
   }
 }

@@ -27,6 +27,8 @@ A Claude Code mod. `/realwork` opens a side pane with a card for every session o
 - **Time left**: an estimate from the average time of the steps finished so far, applied to the steps still to go. It reads "estimating…" until a step is done.
 - **Elapsed time**, the folder, and whether the session is waiting for you.
 
+The pane opens by itself the first time a task list appears in a session, where it docks beside the chat (the desktop app, VS Code, a fullscreen terminal). It opens once per session, so a pane you close stays closed. Turn this off with the setting "Open the pane automatically".
+
 A task with no task list shows "no task list": the activity and elapsed time are real, and no percentage is made up.
 
 Sessions share their cards through the mod's store, so a session appears only where this mod is installed, on this machine. A session silent for 3 minutes drops off the pane.

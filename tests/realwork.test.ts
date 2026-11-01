@@ -7,7 +7,7 @@ type Kit = Parameters<Parameters<typeof test>[1]>[1]
 
 // Stands in for the engine: clock, store, agents, and tools that just succeed.
 function engine(on: Kit, toolResult: (tool: string) => object = () => ({})) {
-  const s = { now: T0, store: new Map<string, unknown>(), status: [] as (string | undefined)[] }
+  const s = { now: T0, store: new Map<string, unknown>(), status: [] as (string | undefined)[], opened: 0, surfaces: ['terminal'] as string[] }
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('clock.now', () => ({ value: s.now }))
@@ -17,11 +17,18 @@ function engine(on: Kit, toolResult: (tool: string) => object = () => ({})) {
   on('store.keys', () => ({ value: [...s.store.keys()] }))
   on('store.delete', (_, e) => (s.store.delete(e.key), { value: undefined }))
   on('agent.list', () => ({ value: [] }))
+  on('session.surfaces', () => ({ value: s.surfaces }))
   on('turn.start', (_, e) => ({ text: e.text, turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   on('tool.call', (_, e) => ({ result: toolResult(e.tool) }))
   on('ui.status', (_, e) => (s.status.push(e as unknown as string), { value: undefined }))
   on('ui.invalidate', () => ({ value: undefined }))
+  on('ui.open', () => (s.opened++, { value: { isPlaced: true } }))
+  // The engine's own band, beneath the mod's pass-through.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return h(Text, {}, 'engine')
+  })
   return s
 }
 
@@ -123,4 +130,61 @@ test("Claude Code's todo and task tools count too", async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /^50%/ }))?.text).toContain('50%')
   expect((await ui.find({ type: 'Text', text: /Step 2 of 4/ }))?.text).toBe('Step 2 of 4 · Two')
   await ui.unmount()
+})
+
+// Draws the band once so the mod learns whether panes dock on this surface.
+async function band($: Parameters<Parameters<typeof test>[1]>[0], isFullscreen: boolean) {
+  const ui = await $.ui.mount({
+    plugin: 'realwork',
+    surface: 'desktop',
+    component: 'AbovePrompt',
+    props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 80, scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    viewport: { columns: 120, rows: 40, isFullscreen },
+  } as never)
+  await ui.unmount()
+}
+
+const twoSteps = plan({ items: [{ content: 'A', status: 'in_progress' }, { content: 'B', status: 'pending' }] })
+
+test('the first task list opens the pane once, where it docks', async ($, on) => {
+  const s = engine(on)
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await band($, true)
+  await $.turn.start({ text: 'One', turnId: 't1' })
+  await $.tool.call(twoSteps)
+  expect(s.opened).toBe(1)
+  // Later lists, and a second task, leave a pane the person may have closed alone.
+  await $.tool.call(plan({ advance: true }))
+  await $.tool.call({ tool: 'mcp__ccd_turn__wrap_up', recap: 'x' } as never)
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
+  await $.turn.start({ text: 'Two', turnId: 't2' })
+  await $.tool.call(twoSteps)
+  expect(s.opened).toBe(1)
+})
+
+test('no auto-open where a pane would not dock', async ($, on) => {
+  const s = engine(on)
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
+  await band($, false)
+  await $.turn.start({ text: 'One', turnId: 't1' })
+  await $.tool.call(twoSteps)
+  expect(s.opened).toBe(0)
+})
+
+test('the setting turns the auto-open off', { options: { autoOpen: false } }, async ($, on) => {
+  const s = engine(on)
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await band($, true)
+  await $.turn.start({ text: 'One', turnId: 't1' })
+  await $.tool.call(twoSteps)
+  expect(s.opened).toBe(0)
+})
+
+test('in the desktop app it opens even when another band hides the docking report', async ($, on) => {
+  const s = engine(on)
+  s.surfaces = ['desktop']
+  await $.session.start({ cwd: '/work', surface: 'desktop', isInteractive: true })
+  await $.turn.start({ text: 'One', turnId: 't1' })
+  await $.tool.call(twoSteps)
+  expect(s.opened).toBe(1)
 })

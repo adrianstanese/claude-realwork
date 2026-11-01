@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { Step, Work } from '../types'
 
@@ -13,9 +13,14 @@ const STALE_MS = 3 * 60_000
 
 const sessionId = atom({ plugin: 'realwork', key: 'id' } as const, '')
 const work = atom({ plugin: 'realwork', key: 'work' } as const, null, { shape: 'work-1' })
+// Whether the pane was opened unasked this session, so a closed pane stays closed.
+const isAutoOpened = atom({ plugin: 'realwork', key: 'isAutoOpened' } as const, false)
 
 let cwd = '.'
 let lastWrite = 0
+// Whether a surface docks a pane beside the transcript, from its last drawing.
+let canDock = false
+let isAutoOpen = true
 
 const base = (path: unknown) => String(path ?? '').split('/').filter(Boolean).pop() ?? ''
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
@@ -177,6 +182,23 @@ async function tick($: $) {
 
 // The task list, from whichever plan tool Claude used.
 async function track($: $, tool: string, input: Record<string, unknown>, result: unknown) {
+  const before = (await read($, work))?.steps.length ?? 0
+  await trackSteps($, tool, input, result)
+  if (before === 0 && ((await read($, work))?.steps.length ?? 0) > 0) await autoOpen($)
+}
+
+// The first task list of the session opens the pane, where it docks beside the chat.
+async function autoOpen($: $) {
+  if (!isAutoOpen || (await read($, isAutoOpened))) return
+  // Another mod's band can hide the drawing that reports docking; the desktop
+  // app and VS Code dock panes beside the chat either way.
+  const isApp = (await $.session.surfaces()).some(x => x === 'desktop' || x === 'vscode')
+  if (!canDock && !isApp) return
+  await update($, isAutoOpened, () => true)
+  await openPane($)
+}
+
+async function trackSteps($: $, tool: string, input: Record<string, unknown>, result: unknown) {
   if (tool === 'mcp__ccd_turn__update_plan') {
     await change($, (w, now) => ({ ...w, steps: applyPlan(w.steps, input, now) }), true)
   } else if (tool === 'mcp__ccd_turn__wrap_up') {
@@ -207,9 +229,19 @@ async function track($: $, tool: string, input: Record<string, unknown>, result:
   }
 }
 
-const openPane = ($: $) => $.ui.open({ id: PANE, title: 'Real work' })
+function openPane($: $) {
+  return $.ui.open({ id: PANE, title: 'Real work' })
+}
 
-export const register: Register = on => {
+export const register: Register = (on, options: PluginOptions) => {
+  isAutoOpen = options.autoOpen !== false
+
+  // Draws nothing: notes whether panes dock here, for the auto-open.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+    if (e.viewport?.isFullscreen !== undefined) canDock = e.viewport.isFullscreen
+    return next(e)
+  })
+
   on('session.start', async ($, e, next) => {
     cwd = e.cwd
     if ((await read($, sessionId)) === '') await update($, sessionId, () => crypto.randomUUID())

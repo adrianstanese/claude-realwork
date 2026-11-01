@@ -1,11 +1,19 @@
 {
   "name": "realwork",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "/realwork: a live pane of what Claude is working on in every session, % of the task list done and the estimated time left",
   "author": {
     "name": "Adrian Stanese"
   },
   "license": "MIT",
   "types": "./types/index.d.ts",
-  "repository": "https://github.com/adrianstanese/claude-realwork"
+  "repository": "https://github.com/adrianstanese/claude-realwork",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open the pane automatically",
+      "description": "Open the Real work pane when a task with a task list starts, where it docks beside the chat; once per session.",
+      "default": true
+    }
+  }
 }
