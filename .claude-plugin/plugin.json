@@ -1,0 +1,11 @@
+{
+  "name": "realwork",
+  "version": "0.1.0",
+  "description": "/realwork: a live pane of what Claude is working on in every session, % of the task list done and the estimated time left",
+  "author": {
+    "name": "Adrian Stanese"
+  },
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "repository": "https://github.com/adrianstanese/claude-realwork"
+}
